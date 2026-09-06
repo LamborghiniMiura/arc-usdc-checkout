@@ -1,0 +1,18 @@
+{
+  "name": "arc-usdc-checkout",
+  "version": "0.1.0",
+  "description": "Accept USDC on Arc in a small online shop: no smart contract, no processor, no dependencies. Runs on Cloudflare Pages Functions.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Daisuke Hiramura <dai@yume-moon.com> (Yume Moon Co., Ltd.)",
+  "repository": "github:LamborghiniMiura/arc-usdc-checkout",
+  "keywords": ["arc", "usdc", "circle", "stablecoin", "checkout", "payments", "cloudflare-pages", "astro"],
+  "files": ["src", "README.md", "LICENSE"],
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "astro": "^5.0.0",
+    "typescript": "^5.6.0"
+  }
+}
