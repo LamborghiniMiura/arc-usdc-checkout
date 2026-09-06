@@ -49,8 +49,8 @@ src/lib/amount.ts      fiat→USDC, amount tagging, formatting
 src/lib/rpc.ts         minimal JSON-RPC client, Transfer-log verification
 src/lib/orders.ts      order state on Cloudflare KV (in-memory fallback for dev)
 src/lib/merchant.ts    ← the one file you customize: catalog, shipping, FX, onPaid hook
-src/lib/checkout.ts    framework-agnostic handlers: createOrder / confirmOrder / orderStatus
-src/pages/api/usdc/    Astro endpoint bindings (create, confirm, status)
+src/lib/checkout.ts    framework-agnostic handlers: createOrder / confirmOrder / orderStatus / reconcile
+src/pages/api/usdc/    Astro endpoint bindings (create, confirm, status, reconcile)
 src/client/pay.ts      browser side, EIP-1193 only (MetaMask, Rabby, …)
 ```
 
@@ -70,6 +70,7 @@ src/client/pay.ts      browser side, EIP-1193 only (MetaMask, Rabby, …)
    | `ARC_EXPLORER_URL` | `https://testnet.arcscan.app` | |
    | `ARC_USDC_ADDRESS` | `0x3600000000000000000000000000000000000000` | verify for mainnet |
    | `USDC_ORDER_TTL_MIN` | `30` | quote validity |
+   | `USDC_ADMIN_TOKEN` | random string | bearer token for `/api/usdc/reconcile` |
 
 4. KV: create a namespace and bind it as `ORDERS` (Pages → Settings → Bindings). Without it the module falls back to an in-memory store, which is fine for `astro dev` and wrong for production.
 5. Testnet USDC for your test wallet: https://faucet.circle.com
@@ -88,14 +89,16 @@ if (result.status === 'paid') location.href = `/thanks?order=${quote.orderId}`;
 ## Things we learned building this
 
 - **Arc's USDC has two faces.** The native balance (18 decimals, used for gas) and the ERC-20 interface at `0x3600…0000` (6 decimals) are the same balance. Do all accounting on the ERC-20 side and never mix the two decimals.
+- **Native sends emit a *synthetic* Transfer log from `0xffff…fffe`, in 18 decimals.** If a customer ignores your pay button and just "sends USDC" from their wallet to your address, the receipt has no calldata and no log from `0x3600…` — but it does carry a `Transfer(from, to, value)` log emitted by `0xfffffffffffffffffffffffffffffffffffffffe` with an 18-decimal value. Match on both log sources and normalize to 6 decimals, or you will silently miss every manual payment. We found this on our first reconciliation test.
+- **Reconcile with `eth_getLogs`, not Circle's Event Monitor.** Event Monitors subscribe per contract + event signature and cannot filter by recipient, so monitoring USDC `Transfer` on Arc means receiving every USDC transfer on the chain. A periodic `eth_getLogs` with `topics[2] = your address` across both log sources is precise and cheap; that is what `reconcile()` in `checkout.ts` does (scan from a stored block cursor, settle any pending order whose tagged amount matches).
 - **A reverted `transfer` is the most common failure** and it's almost always insufficient balance — the faucet gives 20 USDC and our first test order was 27. Report `status: 0x0` to the customer as "transfer failed", not "not found".
 - **Wallets disagree on the error code for an unknown chain.** MetaMask returns 4902, Rabby didn't. Treat any non-4001 error from `wallet_switchEthereumChain` as "try `wallet_addEthereumChain`".
-- **Pages Functions can't hold a WebSocket**, so we verify on the client's report of the tx hash instead of watching the address. A Circle Event Monitor webhook is the natural backstop for the case where the customer paid and then closed the tab; that's next.
+- **Pages Functions can't hold a WebSocket**, so the primary path verifies on the client's report of the tx hash, and a cron-pinged reconcile endpoint (`eth_getLogs` to your address, both log sources) catches the case where the customer paid and closed the tab.
 
 ## Roadmap
 
-- [ ] Circle Event Monitor webhook as a fallback confirmation path
-- [ ] Paymaster support so customers don't need a gas balance
+- [x] Reconcile endpoint for payments that bypass the pay page (native sends, closed tabs)
+- [ ] Gas Station / Paymaster support so customers don't need a gas balance
 - [ ] Per-chapter / per-lesson micropayments for our manga classes (Nanopayments)
 - [ ] Packaging as a drop-in for Shopify / WooCommerce for other small creators in SEA and Japan
 

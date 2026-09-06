@@ -10,6 +10,21 @@ import type { ArcConfig } from './config';
 // keccak256("Transfer(address,address,uint256)")
 const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
 
+/**
+ * Arc emits a synthetic Transfer log from this pseudo-address for NATIVE USDC value transfers
+ * (a plain wallet "send" with no calldata). Its amount is 18-decimal. Transfers made through the
+ * ERC-20 interface at 0x3600… emit a normal 6-decimal Transfer. Accept both, normalize to micro-USDC.
+ */
+export const NATIVE_TRANSFER_LOG_ADDRESS = '0xfffffffffffffffffffffffffffffffffffffffe';
+const NATIVE_TO_MICRO = 10n ** 12n;
+
+export function logAmountToMicro(cfg: ArcConfig, log: Log): bigint | null {
+  const addr = log.address.toLowerCase();
+  if (addr === cfg.usdcAddress) return BigInt(log.data);
+  if (addr === NATIVE_TRANSFER_LOG_ADDRESS) return BigInt(log.data) / NATIVE_TO_MICRO; // floor sub-micro dust
+  return null;
+}
+
 export interface Log {
   address: string;
   topics: string[];
@@ -58,10 +73,11 @@ export function findIncomingTransfer(cfg: ArcConfig, receipt: Receipt): Transfer
   let total = 0n;
   let from: string | null = null;
   for (const log of receipt.logs) {
-    if (log.address.toLowerCase() !== cfg.usdcAddress) continue;
     if (log.topics.length < 3 || log.topics[0] !== TRANSFER_TOPIC) continue;
     if (topicToAddress(log.topics[2]) !== cfg.receiver) continue;
-    total += BigInt(log.data);
+    const micro = logAmountToMicro(cfg, log);
+    if (micro === null) continue;
+    total += micro;
     from ??= topicToAddress(log.topics[1]);
   }
   if (!from || total === 0n) return null;
