@@ -98,9 +98,10 @@ if (result.status === 'paid') location.href = `/thanks?order=${quote.orderId}`;
 ## Roadmap
 
 - [x] Reconcile endpoint for payments that bypass the pay page (native sends, closed tabs)
-- [ ] Gas Station / Paymaster support so customers don't need a gas balance
-- [ ] Per-chapter / per-lesson micropayments for our manga classes (Nanopayments)
+- [ ] Per-chapter / per-lesson micropayments for our manga classes
 - [ ] Packaging as a drop-in for Shopify / WooCommerce for other small creators in SEA and Japan
+
+Not on the roadmap: a paymaster. On Arc the gas token *is* USDC, so a customer who can pay you can already pay for gas; sponsoring fees only matters for ERC-4337 smart accounts, which our customers don't use.
 
 ## License
 
